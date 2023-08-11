@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import { prisma } from "~/server/db";
+import { inngest } from "~/server/inngest";
 
 export const userRouter = createTRPCRouter({
   create: publicProcedure
@@ -10,28 +11,38 @@ export const userRouter = createTRPCRouter({
     .mutation(async ({ input }) => {
       const { email } = input;
 
-      try {
-        const user = await prisma.user.create({
-          data: {
-            email,
-          },
-        });
-
-        return {
-          user,
-        };
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === "P2002"
-        ) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: "Email already exists",
+      const user = await prisma.$transaction(async (tx) => {
+        try {
+          const user = await tx.user.create({
+            data: {
+              email,
+            },
           });
-        } else {
-          throw error;
+
+          await inngest.send({
+            name: "user/create",
+            data: {
+              userId: user.id,
+              email: user.email,
+            },
+          });
+
+          return user;
+        } catch (error) {
+          if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2002"
+          ) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "Email already exists",
+            });
+          } else {
+            throw error;
+          }
         }
-      }
+      });
+
+      return { user };
     }),
 });
