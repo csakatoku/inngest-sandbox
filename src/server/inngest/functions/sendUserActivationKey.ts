@@ -1,5 +1,6 @@
 import { prisma } from "~/server/db";
 import { inngest } from "~/server/inngest/client";
+import * as emailUtil from "~/utils/email";
 
 export const sendUserActivationKey = inngest.createFunction(
   { name: "Send user activation key" },
@@ -18,6 +19,8 @@ export const sendUserActivationKey = inngest.createFunction(
           expiresAt: new Date(Date.now() + 86400 * 1000), // expires in 24 hours
         },
       });
+
+      await emailUtil.sendUserActivationKey({ userId, email, activationKey });
 
       return userActivationKey;
     });
